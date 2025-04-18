@@ -75,6 +75,17 @@ class TUI:
                     win.addstr(row, 3, line[:max_x-4])
                     row += 1
 
+    def draw_reserved(self, win, scroll_offset=0):
+        win.clear()
+        win.box()
+        win.addstr(0, 2, "[Reserved Commands]")
+        reserved = self.simulator.get_reserved() if hasattr(self.simulator, "get_reserved") else []
+        max_y, max_x = win.getmaxyx()
+        # 스크롤 없이 처음부터 보이도록
+        for idx, cmd in enumerate(reserved[:max_y-2], start=1):
+            if idx < max_y - 1:
+                win.addstr(idx, 1, cmd[:max_x-3])
+
     def get_user_input(self, input_win, input_str):
         prompt = "> "
         input_win.clear()
@@ -168,19 +179,26 @@ class TUI:
                 continue
 
             usable_height = height - 6  # 입력창 window 높이(3) + 메시지창(1) + 여유(2)
-            reg_win_width = max(18, width // 5)
-            stack_win_width = max(18, width // 5)
-            mem_win_width = max(24, (width - reg_win_width - stack_win_width) // 2)
-            cmd_win_width = max(16, width - reg_win_width - stack_win_width - mem_win_width)
+            reg_win_width = max(18, width // 4)
+            stack_win_width = max(18, width // 4)
+            mem_win_width = max(24, width // 4)
+            cmd_win_width = max(16, width // 4)
+            reserved_win_width = max(18, width // 4)
+            # 나머지 공간은 입력창/메시지창
+
             reg_win_height = min(50 + 3, usable_height)
             stack_win_height = usable_height
             mem_win_height = min(len(self.simulator.memory)//8 + 3, usable_height)
             cmd_win_height = min(len(self.simulator.command_list) + 3, usable_height)
+            # reserved window는 command list window 아래에 배치
+            reserved_win_height = usable_height - cmd_win_height
+            reserved_win_y = cmd_win_height
+            reserved_win_x = reg_win_width + stack_win_width + mem_win_width
 
             reg_win_x = 0
-            stack_win_x = reg_win_width
-            mem_win_x = reg_win_width + stack_win_width
-            cmd_win_x = reg_win_width + stack_win_width + mem_win_width
+            stack_win_x = reg_win_x + reg_win_width
+            mem_win_x = stack_win_x + stack_win_width
+            cmd_win_x = mem_win_x + mem_win_width
 
             reg_win = curses.newwin(reg_win_height, reg_win_width, 0, reg_win_x)
             self.draw_registers(reg_win)
@@ -197,6 +215,10 @@ class TUI:
             cmd_win = curses.newwin(cmd_win_height, cmd_win_width, 0, cmd_win_x)
             self.draw_commands(cmd_win)
             cmd_win.refresh()
+
+            reserved_win = curses.newwin(reserved_win_height, reserved_win_width, reserved_win_y, cmd_win_x)
+            self.draw_reserved(reserved_win)  # scroll_offset 인자 제거
+            reserved_win.refresh()
 
             # 입력창 window (높이 4, 화면 하단에서 4줄 위)
             input_win_height = 4
@@ -226,7 +248,6 @@ class TUI:
                     self.last_message = f"Executed: {command}"
                 except Exception as e:
                     self.last_message = f"Error: {e}"
-                    # 에러 발생 시 메시지창에 에러 출력 및 입력창 재입력
                     msg_win.clear()
                     msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
                     msg_win.refresh()
@@ -235,7 +256,7 @@ class TUI:
                     input_win.addstr(1, 2, "Enter ARMv7 instruction (or 'q' to quit):")
                     input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
                     input_win.refresh()
-                    curses.napms(1200)  # 1.2초간 에러 메시지 표시
+                    curses.napms(1200)
             input_str = ""
 
 # 사용 예시:

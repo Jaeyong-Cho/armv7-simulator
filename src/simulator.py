@@ -37,6 +37,22 @@ class ARMv7Simulator:
             "q",
         ]
         self.history = []  # 명령어 히스토리 추가
+        self.reserved = []  # break 이후 명령어 저장
+
+    def add_reserved(self, instruction):
+        self.reserved.append(instruction)
+
+    def get_reserved(self):
+        return self.reserved
+
+    def pop_reserved(self):
+        """
+        reserved 리스트에서 가장 앞의 명령어를 꺼내 반환합니다.
+        명령어가 없으면 None을 반환합니다.
+        """
+        if self.reserved:
+            return self.reserved.pop(0)
+        return None
 
     def parse_and_execute(self, instruction):
         self.history.append(instruction)  # 히스토리 기록
