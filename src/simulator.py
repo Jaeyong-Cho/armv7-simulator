@@ -9,19 +9,19 @@ class ARMv7Simulator:
             return
 
         op = tokens[0].upper()
-        if op == "MOV":
+        if op == "MOV" or op == "mov":
             rd, imm = re.findall(r'R\d+', tokens[1])[0], int(tokens[2].replace('#', ''))
             self.registers[rd] = imm
-        elif op == "ADD":
+        elif op == "ADD" or op == "add":
             rd, rn, imm = re.findall(r'R\d+', tokens[1] + tokens[2]), int(tokens[3].replace('#', ''))
             self.registers[rd[0]] = self.registers[rd[1]] + imm
-        elif op == "STR":
+        elif op == "STR" or op == "str":
             rd, rn = re.findall(r'R\d+', tokens[1] + tokens[2])
             imm = int(re.findall(r'#(\d+)', tokens[2])[0])
             addr = self.registers[rn] + imm
             if 0 <= addr < len(self.memory):
                 self.memory[addr] = self.registers[rd]
-        elif op == "LDR":
+        elif op == "LDR" or op == "ldr":
             rd, rn = re.findall(r'R\d+', tokens[1] + tokens[2])
             imm = int(re.findall(r'#(\d+)', tokens[2])[0])
             addr = self.registers[rn] + imm
