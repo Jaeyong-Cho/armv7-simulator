@@ -49,6 +49,31 @@ class TUI:
         for idx, cmd in enumerate(self.simulator.command_list, start=1):
             win.addstr(idx, 1, cmd)
 
+    def draw_stack(self, win):
+        win.clear()
+        win.box()
+        win.addstr(0, 2, "[Stack]")
+        row = 1
+        max_y, max_x = win.getmaxyx()
+        for mode in self.simulator.stack:
+            if row < max_y - 1:
+                win.addstr(row, 1, f"<{mode}>")
+                row += 1
+            stack_entries = list(reversed(self.simulator.stack[mode]))
+            if not stack_entries:
+                if row < max_y - 1:
+                    win.addstr(row, 3, "(empty)")
+                    row += 1
+            for idx, entry in enumerate(stack_entries):
+                if isinstance(entry, tuple) and len(entry) == 2:
+                    addr, val = entry
+                    line = f"{idx:02d}: [0x{addr:02X}] 0x{val:08X}"
+                else:
+                    line = f"{idx:02d}: 0x{entry:08X}"
+                if row < max_y - 1:
+                    win.addstr(row, 3, line[:max_x-4])
+                    row += 1
+
     def get_user_input(self, input_win, input_str):
         prompt = "> "
         input_win.clear()
@@ -121,21 +146,27 @@ class TUI:
                 continue
 
             usable_height = height - 6  # 입력창 window 높이(3) + 메시지창(1) + 여유(2)
-            reg_win_width = max(18, width // 4)
+            reg_win_width = max(18, width // 5)
+            stack_win_width = max(18, width // 5)
+            mem_win_width = max(24, (width - reg_win_width - stack_win_width) // 2)
+            cmd_win_width = max(16, width - reg_win_width - stack_win_width - mem_win_width)
             reg_win_height = min(50 + 3, usable_height)
-            remain_width = width - reg_win_width
-            mem_win_width = max(24, remain_width // 2)
-            cmd_win_width = max(16, remain_width - mem_win_width)
+            stack_win_height = usable_height
             mem_win_height = min(len(self.simulator.memory)//8 + 3, usable_height)
             cmd_win_height = min(len(self.simulator.command_list) + 3, usable_height)
 
             reg_win_x = 0
-            mem_win_x = reg_win_width
-            cmd_win_x = reg_win_width + mem_win_width
+            stack_win_x = reg_win_width
+            mem_win_x = reg_win_width + stack_win_width
+            cmd_win_x = reg_win_width + stack_win_width + mem_win_width
 
             reg_win = curses.newwin(reg_win_height, reg_win_width, 0, reg_win_x)
             self.draw_registers(reg_win)
             reg_win.refresh()
+
+            stack_win = curses.newwin(stack_win_height, stack_win_width, 0, stack_win_x)
+            self.draw_stack(stack_win)
+            stack_win.refresh()
 
             mem_win = curses.newwin(mem_win_height, mem_win_width, 0, mem_win_x)
             self.draw_memory(mem_win)
@@ -172,6 +203,16 @@ class TUI:
                     self.last_message = f"Executed: {command}"
                 except Exception as e:
                     self.last_message = f"Error: {e}"
+                    # 에러 발생 시 메시지창에 에러 출력 및 입력창 재입력
+                    msg_win.clear()
+                    msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
+                    msg_win.refresh()
+                    input_win.clear()
+                    input_win.box()
+                    input_win.addstr(1, 2, "Enter ARMv7 instruction (or 'q' to quit):")
+                    input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
+                    input_win.refresh()
+                    curses.napms(1200)  # 1.2초간 에러 메시지 표시
             input_str = ""
 
 # 사용 예시:

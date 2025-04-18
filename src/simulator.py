@@ -13,17 +13,28 @@ class ARMv7Simulator:
             "mon": {"sp": 0, "lr": 0, "spsr": 0},
             "fiq": {"r8": 0, "r9": 0, "r10": 0, "r11": 0, "r12": 0, "sp": 0, "lr": 0, "spsr": 0}
         }
+        self.stack = {
+            "com": [],
+            "usr/sys": [],
+            "svc": [],
+            "abt": [],
+            "und": [],
+            "irq": [],
+            "mon": [],
+            "fiq": []
+        }
         self.memory = [0] * 64  # 64 words (256 bytes)
         self.command_list = [
-            "MOV",
             "ADD",
-            "SUB",
-            "LDR",
-            "STR",
             "B",
             "BL",
+            "LDR",
+            "MOV",
             "NOP",
-            "q"
+            "STR",
+            "SUB",
+            "PUSH",
+            "q",
         ]
         self.history = []  # 명령어 히스토리 추가
 
@@ -41,10 +52,14 @@ class ARMv7Simulator:
             if rd in self.registers["com"]:
                 self.registers["com"][rd] = imm
             else:
+                found = False
                 for mode in self.registers:
                     if rd in self.registers[mode]:
                         self.registers[mode][rd] = imm
+                        found = True
                         break
+                if not found:
+                    raise Exception(f"Register {rd} not found")
         # ADD rX, rY, #imm
         elif op == "ADD":
             rd = tokens[1].lower()
@@ -53,43 +68,38 @@ class ARMv7Simulator:
             if rd in self.registers["com"] and rn in self.registers["com"]:
                 self.registers["com"][rd] = self.registers["com"][rn] + imm
             else:
+                found = False
                 for mode in self.registers:
                     if rd in self.registers[mode] and rn in self.registers[mode]:
                         self.registers[mode][rd] = self.registers[mode][rn] + imm
+                        found = True
                         break
+                if not found:
+                    raise Exception(f"Register {rd} or {rn} not found")
         # PUSH {rX}
         elif op == "PUSH":
-            # 예: PUSH {r0}
             reg_token = tokens[1].strip("{}").lower()
-            # 우선 "com"의 sp 사용, 없으면 각 모드 sp 사용
-            sp_mode = "com"
-            if "sp" not in self.registers["com"]:
-                # usr/sys, svc, abt, und, irq, fiq, mon 중 첫 sp 찾기
-                for mode in ["usr/sys", "svc", "abt", "und", "irq", "fiq", "mon"]:
-                    if "sp" in self.registers[mode]:
-                        sp_mode = mode
-                        break
+            sp_mode = "usr/sys"
             sp = self.registers[sp_mode]["sp"]
-            # 스택은 감소 방향 (Full Descending)
-            sp -= 1
+            sp -= 4
             self.registers[sp_mode]["sp"] = sp
             # 메모리 경계 체크
-            if 0 <= sp < len(self.memory):
-                # rX 값 찾기
-                reg_val = None
-                for mode in self.registers:
-                    if reg_token in self.registers[mode]:
-                        reg_val = self.registers[mode][reg_token]
-                        break
-                if reg_val is not None:
-                    self.memory[sp] = reg_val
-                else:
-                    print(f"Register {reg_token} not found")
+            # if not (0 <= sp < len(self.memory)):
+            #     raise Exception("Stack Overflow/Underflow")
+            # rX 값 찾기
+            reg_val = None
+            for mode in self.registers:
+                if reg_token in self.registers[mode]:
+                    reg_val = self.registers[mode][reg_token]
+                    break
+            if reg_val is not None:
+                # self.memory[sp] = reg_val
+                self.stack[sp_mode].append((sp, reg_val))
             else:
-                print("Stack Overflow/Underflow")
+                raise Exception(f"Register {reg_token} not found")
         # SUB, LDR, STR 등은 필요에 따라 추가 구현
         else:
-            print(f"Unsupported instruction: {instruction}")
+            raise Exception(f"Unsupported instruction: {instruction}")
 
     def get_registers(self):
         return self.registers
