@@ -90,41 +90,55 @@ class TUI:
             reg_names.extend(self.simulator.registers[mode].keys())
         reg_names = list(set(reg_names))  # 중복 제거
 
+        cursor_pos = len(input_str)  # 커서 위치 변수
+
         while True:
             input_win.move(2, 2)
             input_win.clrtoeol()
+            # 입력창에 현재 커서 위치 반영
             input_win.addstr(2, 2, prompt + input_str + " " * (max_x - len(prompt) - len(input_str) - 4))
-            input_win.move(2, 2 + len(prompt) + len(input_str))
+            input_win.move(2, 2 + len(prompt) + cursor_pos)
             input_win.refresh()
             key = input_win.getch()
             if key in (curses.KEY_ENTER, 10, 13):
                 return input_str
             elif key in (curses.KEY_BACKSPACE, 127, 8):
-                input_str = input_str[:-1]
+                if cursor_pos > 0:
+                    input_str = input_str[:cursor_pos-1] + input_str[cursor_pos:]
+                    cursor_pos -= 1
+            elif key == curses.KEY_LEFT:
+                if cursor_pos > 0:
+                    cursor_pos -= 1
+            elif key == curses.KEY_RIGHT:
+                if cursor_pos < len(input_str):
+                    cursor_pos += 1
             elif key == curses.KEY_UP:
                 if history and hist_idx > 0:
                     hist_idx -= 1
                     input_str = history[hist_idx]
+                    cursor_pos = len(input_str)
             elif key == curses.KEY_DOWN:
                 if history and hist_idx < len(history) - 1:
                     hist_idx += 1
                     input_str = history[hist_idx]
+                    cursor_pos = len(input_str)
                 else:
                     input_str = ""
                     hist_idx = len(history)
+                    cursor_pos = 0
             elif key == 9:  # Tab key for auto-completion
-                # 명령어 자동완성
                 parts = input_str.strip().split()
                 if parts:
-                    # 첫 번째 단어는 명령어 자동완성
                     if len(parts) == 1:
                         prefix = parts[0].upper()
                         matches = [cmd for cmd in command_list if cmd.startswith(prefix)]
                         if matches:
                             parts[0] = matches[0]
                             input_str = " ".join(parts)
+                            cursor_pos = len(input_str)
             elif 32 <= key <= 126:
-                input_str += chr(key)
+                input_str = input_str[:cursor_pos] + chr(key) + input_str[cursor_pos:]
+                cursor_pos += 1
 
     def run(self):
         curses.wrapper(self._main)
