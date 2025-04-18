@@ -38,11 +38,9 @@ class ARMv7Simulator:
         if op == "MOV":
             rd = tokens[1].lower()
             imm = int(tokens[2].replace('#', ''), 0)
-            # r0~r12, pc, cpsr는 "com"에 저장
             if rd in self.registers["com"]:
                 self.registers["com"][rd] = imm
             else:
-                # 예외: fiq의 r8~r12
                 for mode in self.registers:
                     if rd in self.registers[mode]:
                         self.registers[mode][rd] = imm
@@ -59,6 +57,36 @@ class ARMv7Simulator:
                     if rd in self.registers[mode] and rn in self.registers[mode]:
                         self.registers[mode][rd] = self.registers[mode][rn] + imm
                         break
+        # PUSH {rX}
+        elif op == "PUSH":
+            # 예: PUSH {r0}
+            reg_token = tokens[1].strip("{}").lower()
+            # 우선 "com"의 sp 사용, 없으면 각 모드 sp 사용
+            sp_mode = "com"
+            if "sp" not in self.registers["com"]:
+                # usr/sys, svc, abt, und, irq, fiq, mon 중 첫 sp 찾기
+                for mode in ["usr/sys", "svc", "abt", "und", "irq", "fiq", "mon"]:
+                    if "sp" in self.registers[mode]:
+                        sp_mode = mode
+                        break
+            sp = self.registers[sp_mode]["sp"]
+            # 스택은 감소 방향 (Full Descending)
+            sp -= 1
+            self.registers[sp_mode]["sp"] = sp
+            # 메모리 경계 체크
+            if 0 <= sp < len(self.memory):
+                # rX 값 찾기
+                reg_val = None
+                for mode in self.registers:
+                    if reg_token in self.registers[mode]:
+                        reg_val = self.registers[mode][reg_token]
+                        break
+                if reg_val is not None:
+                    self.memory[sp] = reg_val
+                else:
+                    print(f"Register {reg_token} not found")
+            else:
+                print("Stack Overflow/Underflow")
         # SUB, LDR, STR 등은 필요에 따라 추가 구현
         else:
             print(f"Unsupported instruction: {instruction}")
