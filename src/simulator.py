@@ -1,3 +1,5 @@
+import re
+
 class ARMv7Simulator:
     def __init__(self):
         self.registers = {f"R{i}": 0 for i in range(16)}
