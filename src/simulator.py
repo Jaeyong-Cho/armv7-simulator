@@ -4,6 +4,17 @@ class ARMv7Simulator:
     def __init__(self):
         self.registers = {f"R{i}": 0 for i in range(16)}
         self.memory = [0] * 64  # 64 words (256 bytes)
+        self.command_list = [
+            "MOV",
+            "ADD",
+            "SUB",
+            "LDR",
+            "STR",
+            "B",
+            "BL",
+            "NOP",
+            "q"
+        ]
 
     def parse_and_execute(self, instruction):
         tokens = instruction.strip().split()
