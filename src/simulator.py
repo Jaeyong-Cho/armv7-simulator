@@ -112,6 +112,25 @@ class ARMv7Simulator:
                         break
                 if not found:
                     raise Exception(f"Register {rd} or {rn} not found")
+        # LDR rX, =label
+        elif op == "LDR" and len(tokens) == 3 and tokens[2].startswith('='):
+            rd = tokens[1].lower()
+            label = tokens[2][1:]  # '=' 제거
+            addr = self.get_label(label)
+            if addr is None:
+                raise Exception(f"Label '{label}' not found")
+            # rX에 주소 저장
+            if rd in self.registers["com"]:
+                self.registers["com"][rd] = addr
+            else:
+                found = False
+                for mode in self.registers:
+                    if rd in self.registers[mode]:
+                        self.registers[mode][rd] = addr
+                        found = True
+                        break
+                if not found:
+                    raise Exception(f"Register {rd} not found")
         # PUSH {rX} 또는 PUSH {rX-rY, ...}
         elif op == "PUSH":
             regs_token = tokens[1].strip("{}").lower()

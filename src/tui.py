@@ -5,6 +5,7 @@ class TUI:
         self.simulator = simulator
         self.last_message = ""
         self.exit = False
+        self.input_exception_log = ""
 
     def draw_registers(self, win):
         win.clear()
@@ -220,14 +221,19 @@ class TUI:
             self.draw_reserved(reserved_win)
             reserved_win.refresh()
 
-            # 입력창 window (높이 4, 화면 하단에서 4줄 위)
-            input_win_height = 4
+            # 입력창 window (높이 5, 화면 하단에서 5줄 위)
+            input_win_height = 5  # 기존 4에서 5로 증가
             input_win = curses.newwin(input_win_height, width, height - input_win_height, 0)
             input_win.keypad(True)
             input_win.clear()
             input_win.box()
             input_win.addstr(1, 2, "Enter ARMv7 instruction (or 'q' to quit):")
             input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
+            # 예외 메시지 표시 라인(맨 아래)
+            if hasattr(self, "input_exception_log") and self.input_exception_log:
+                input_win.addstr(3, 2, f"Error: {self.input_exception_log}"[:width-4], curses.color_pair(1) if curses.has_colors() else 0)
+            else:
+                input_win.addstr(3, 2, " " * (width-4))
             input_win.refresh()
 
             # 메시지창 (입력창 바로 위)
@@ -238,6 +244,7 @@ class TUI:
 
             # reserved 명령어가 있으면 엔터로 한 줄씩 실행
             if self.simulator.get_reserved():
+                self.input_exception_log = ""
                 msg_win.clear()
                 msg_win.addstr(0, 0, "Press ENTER to execute next reserved command, or 'q' to quit.")
                 msg_win.refresh()
@@ -248,8 +255,10 @@ class TUI:
                         try:
                             self.simulator.parse_and_execute(next_cmd)
                             self.last_message = f"Executed: {next_cmd}"
+                            self.input_exception_log = ""
                         except Exception as e:
                             self.last_message = f"Error: {e}"
+                            self.input_exception_log = str(e)
                             msg_win.clear()
                             msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
                             msg_win.refresh()
@@ -271,8 +280,10 @@ class TUI:
                 try:
                     self.simulator.parse_and_execute(command)
                     self.last_message = f"Executed: {command}"
+                    self.input_exception_log = ""
                 except Exception as e:
                     self.last_message = f"Error: {e}"
+                    self.input_exception_log = str(e)
                     msg_win.clear()
                     msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
                     msg_win.refresh()
@@ -280,6 +291,7 @@ class TUI:
                     input_win.box()
                     input_win.addstr(1, 2, "Enter ARMv7 instruction (or 'q' to quit):")
                     input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
+                    input_win.addstr(3, 2, f"Error: {self.input_exception_log}"[:width-4], curses.color_pair(1) if curses.has_colors() else 0)
                     input_win.refresh()
                     curses.napms(1200)
             input_str = ""
