@@ -57,8 +57,15 @@ class TUI:
         history = self.simulator.get_history() if hasattr(self.simulator, "get_history") else []
         hist_idx = len(history)
         max_x = input_win.getmaxyx()[1]
+        command_list = self.simulator.command_list
+
+        # 레지스터 이름 목록 생성
+        reg_names = []
+        for mode in self.simulator.registers:
+            reg_names.extend(self.simulator.registers[mode].keys())
+        reg_names = list(set(reg_names))  # 중복 제거
+
         while True:
-            # 입력 라인 클리어 후 다시 출력
             input_win.move(2, 2)
             input_win.clrtoeol()
             input_win.addstr(2, 2, prompt + input_str + " " * (max_x - len(prompt) - len(input_str) - 4))
@@ -80,6 +87,17 @@ class TUI:
                 else:
                     input_str = ""
                     hist_idx = len(history)
+            elif key == 9:  # Tab key for auto-completion
+                # 명령어 자동완성
+                parts = input_str.strip().split()
+                if parts:
+                    # 첫 번째 단어는 명령어 자동완성
+                    if len(parts) == 1:
+                        prefix = parts[0].upper()
+                        matches = [cmd for cmd in command_list if cmd.startswith(prefix)]
+                        if matches:
+                            parts[0] = matches[0]
+                            input_str = " ".join(parts)
             elif 32 <= key <= 126:
                 input_str += chr(key)
 
