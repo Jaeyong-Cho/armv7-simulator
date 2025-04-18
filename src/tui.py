@@ -4,6 +4,7 @@ class TUI:
     def __init__(self, simulator):
         self.simulator = simulator
         self.last_message = ""
+        self.exit = False
 
     def draw_registers(self, win):
         win.clear()
@@ -136,12 +137,19 @@ class TUI:
                             parts[0] = matches[0]
                             input_str = " ".join(parts)
                             cursor_pos = len(input_str)
+            elif key == 3:  # Ctrl+C
+                input_str = ""
+                cursor_pos = 0
             elif 32 <= key <= 126:
                 input_str = input_str[:cursor_pos] + chr(key) + input_str[cursor_pos:]
                 cursor_pos += 1
 
     def run(self):
-        curses.wrapper(self._main)
+        while self.exit is False:
+            try:
+                curses.wrapper(self._main)
+            except KeyboardInterrupt:
+                pass  # Ctrl+C 무시
 
     def _main(self, stdscr):
         curses.curs_set(1)
@@ -210,6 +218,7 @@ class TUI:
             input_str = self.get_user_input(input_win, input_str)
             command = input_str.strip()
             if command.lower() == 'q':
+                self.exit = True
                 break
             elif command:
                 try:
