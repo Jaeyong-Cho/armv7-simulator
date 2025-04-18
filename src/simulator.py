@@ -92,27 +92,40 @@ class ARMv7Simulator:
                         break
                 if not found:
                     raise Exception(f"Register {rd} or {rn} not found")
-        # PUSH {rX}
+        # PUSH {rX} 또는 PUSH {rX-rY, ...}
         elif op == "PUSH":
-            reg_token = tokens[1].strip("{}").lower()
+            regs_token = tokens[1].strip("{}").lower()
             sp_mode = "usr/sys"
             sp = self.registers[sp_mode]["sp"]
-            sp -= 4
-            self.registers[sp_mode]["sp"] = sp
-            # 메모리 경계 체크
-            # if not (0 <= sp < len(self.memory)):
-            #     raise Exception("Stack Overflow/Underflow")
-            # rX 값 찾기
-            reg_val = None
-            for mode in self.registers:
-                if reg_token in self.registers[mode]:
-                    reg_val = self.registers[mode][reg_token]
-                    break
-            if reg_val is not None:
-                # self.memory[sp] = reg_val
-                self.stack[sp_mode].append((sp, reg_val))
-            else:
-                raise Exception(f"Register {reg_token} not found")
+
+            # 여러 레지스터 처리 (예: r0-r12, lr)
+            reg_list = []
+            for part in regs_token.split(','):
+                part = part.strip()
+                if '-' in part:
+                    start, end = part.split('-')
+                    start = start.strip()
+                    end = end.strip()
+                    if start.startswith('r') and end.startswith('r'):
+                        for i in range(int(start[1:]), int(end[1:]) + 1):
+                            reg_list.append(f"r{i}")
+                else:
+                    reg_list.append(part)
+
+            # 레지스터 순서대로 stack에 저장 (Full Descending, 4바이트씩 감소)
+            for reg in reg_list:
+                reg_val = None
+                for mode in self.registers:
+                    if reg in self.registers[mode]:
+                        reg_val = self.registers[mode][reg]
+                        break
+                if reg_val is not None:
+                    sp -= 4
+                    # self.registers[sp_mode]["sp"] = sp
+                    # self.memory[sp] = reg_val  # 필요시 메모리에도 저장
+                    self.stack[sp_mode].append((sp, reg_val))
+                else:
+                    raise Exception(f"Register {reg} not found")
         # SUB, LDR, STR 등은 필요에 따라 추가 구현
         else:
             raise Exception(f"Unsupported instruction: {instruction}")
