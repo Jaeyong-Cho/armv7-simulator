@@ -11,6 +11,9 @@ mov r9, #9
 mov r10, #10
 mov r11, #11
 mov r12, #12
+mov sp, #0xE0
+
+.extern curr_pcb @@ 0x1000
 
 @@ break
 push {r0-r12, lr}

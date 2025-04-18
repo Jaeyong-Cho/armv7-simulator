@@ -169,7 +169,7 @@ class TUI:
         while True:
             stdscr.clear()
             height, width = stdscr.getmaxyx()
-
+            
             min_width = 60
             min_height = 20
             if width < min_width or height < min_height:
@@ -217,7 +217,7 @@ class TUI:
             cmd_win.refresh()
 
             reserved_win = curses.newwin(reserved_win_height, reserved_win_width, reserved_win_y, cmd_win_x)
-            self.draw_reserved(reserved_win)  # scroll_offset 인자 제거
+            self.draw_reserved(reserved_win)
             reserved_win.refresh()
 
             # 입력창 window (높이 4, 화면 하단에서 4줄 위)
@@ -236,7 +236,32 @@ class TUI:
             msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
             msg_win.refresh()
 
-            # 입력 받기
+            # reserved 명령어가 있으면 엔터로 한 줄씩 실행
+            if self.simulator.get_reserved():
+                msg_win.clear()
+                msg_win.addstr(0, 0, "Press ENTER to execute next reserved command, or 'q' to quit.")
+                msg_win.refresh()
+                key = input_win.getch()
+                if key in (curses.KEY_ENTER, 10, 13):
+                    next_cmd = self.simulator.pop_reserved()
+                    if next_cmd:
+                        try:
+                            self.simulator.parse_and_execute(next_cmd)
+                            self.last_message = f"Executed: {next_cmd}"
+                        except Exception as e:
+                            self.last_message = f"Error: {e}"
+                            msg_win.clear()
+                            msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
+                            msg_win.refresh()
+                            curses.napms(1200)
+                    input_str = ""
+                    continue
+                elif key in (ord('q'), ord('Q')):
+                    self.exit = True
+                    break
+                else:
+                    continue  # 다른 키는 무시하고 다시 루프
+            # reserved 명령어가 없으면 일반 입력
             input_str = self.get_user_input(input_win, input_str)
             command = input_str.strip()
             if command.lower() == 'q':

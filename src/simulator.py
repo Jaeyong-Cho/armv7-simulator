@@ -38,6 +38,7 @@ class ARMv7Simulator:
         ]
         self.history = []  # 명령어 히스토리 추가
         self.reserved = []  # break 이후 명령어 저장
+        self.labels = {}  # label 주소
 
     def add_reserved(self, instruction):
         self.reserved.append(instruction)
@@ -54,10 +55,29 @@ class ARMv7Simulator:
             return self.reserved.pop(0)
         return None
 
+    def add_label(self, name, addr):
+        """label 변수 등록 (예: add_labels('curr_pcb', 0x1000))"""
+        self.labels[name] = addr
+
+    def get_label(self, name):
+        """label 변수 주소 반환"""
+        return self.labels.get(name)
+
     def parse_and_execute(self, instruction):
         self.history.append(instruction)  # 히스토리 기록
         tokens = instruction.strip().replace(',', '').split()
         if not tokens:
+            return
+
+        # extern 라벨 선언 처리 (.extern label @@ 0xADDR)
+        if tokens[0].lower() == ".extern":
+            # 예: .extern curr_pcb @0x1000
+            name = tokens[1]
+            addr = 0
+            for t in tokens:
+                if t.startswith("@@ 0x"):
+                    addr = int(t[1:], 16)
+            self.add_label(name, addr)
             return
 
         op = tokens[0].upper()
