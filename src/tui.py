@@ -4,91 +4,147 @@ class TUI:
     def __init__(self, simulator):
         self.simulator = simulator
         self.last_message = ""
-        self.command_list = [
-            "MOV Rd, #imm",
-            "ADD Rd, Rn, Rm",
-            "SUB Rd, Rn, Rm",
-            "LDR Rd, [Rn]",
-            "STR Rd, [Rn]",
-            "B label",
-            "BL label",
-            "NOP",
-            "q (quit)"
-        ]
 
     def draw_registers(self, win):
-        win.addstr(0, 0, "[Registers]")
-        for idx, (name, value) in enumerate(self.simulator.registers.items(), start=1):
-            win.addstr(idx, 0, f"{name:>3}: 0x{value:08X}")
+        win.clear()
+        win.box()
+        win.addstr(0, 2, "[Registers]")
+        row = 1
+        max_y, max_x = win.getmaxyx()
+        # 공통 레지스터(com)
+        if "com" in self.simulator.registers:
+            if row < max_y - 1:
+                win.addstr(row, 1, "<com>"[:max_x-2])
+                row += 1
+            for name, value in self.simulator.registers["com"].items():
+                if row < max_y - 1:
+                    line = f"{name:>4}: 0x{value:08X}"
+                    win.addstr(row, 3, line[:max_x-4])
+                    row += 1
+        # 각 모드별 레지스터
+        for mode in ["usr/sys", "svc", "mon", "abt", "und", "irq", "fiq"]:
+            if mode in self.simulator.registers:
+                if row < max_y - 1:
+                    win.addstr(row, 1, f"<{mode}>"[:max_x-2])
+                    row += 1
+                for rname, rval in self.simulator.registers[mode].items():
+                    if row < max_y - 1:
+                        line = f"{rname:>4}: 0x{rval:08X}"
+                        win.addstr(row, 3, line[:max_x-4])
+                        row += 1
 
     def draw_memory(self, win):
-        win.addstr(0, 0, "[Memory Map]")
+        win.clear()
+        win.box()
+        win.addstr(0, 2, "[Memory Map]")
         memory = self.simulator.memory
         for i in range(0, min(len(memory), 128), 8):
             line = ' '.join(f"{b:02X}" for b in memory[i:i+8])
-            win.addstr(1 + i // 8, 0, f"{i*4:04X}: {line}")
+            win.addstr(1 + i // 8, 1, f"{i*4:04X}: {line}")
 
     def draw_commands(self, win):
-        win.addstr(0, 0, "[Command List]")
-        for idx, cmd in enumerate(self.command_list, start=1):
-            win.addstr(idx, 0, cmd)
+        win.clear()
+        win.box()
+        win.addstr(0, 2, "[Command List]")
+        for idx, cmd in enumerate(self.simulator.command_list, start=1):
+            win.addstr(idx, 1, cmd)
 
-    def get_user_input(self, stdscr, prompt_y, prompt_x, input_str):
+    def get_user_input(self, input_win, input_str):
         prompt = "> "
+        input_win.clear()
+        input_win.box()
+        input_win.addstr(1, 2, "Enter ARMv7 instruction (or 'q' to quit):")
+        history = self.simulator.get_history() if hasattr(self.simulator, "get_history") else []
+        hist_idx = len(history)
+        max_x = input_win.getmaxyx()[1]
         while True:
-            stdscr.move(prompt_y, prompt_x + len(prompt) + len(input_str))
-            stdscr.refresh()
-            key = stdscr.getch()
+            # 입력 라인 클리어 후 다시 출력
+            input_win.move(2, 2)
+            input_win.clrtoeol()
+            input_win.addstr(2, 2, prompt + input_str + " " * (max_x - len(prompt) - len(input_str) - 4))
+            input_win.move(2, 2 + len(prompt) + len(input_str))
+            input_win.refresh()
+            key = input_win.getch()
             if key in (curses.KEY_ENTER, 10, 13):
                 return input_str
             elif key in (curses.KEY_BACKSPACE, 127, 8):
                 input_str = input_str[:-1]
+            elif key == curses.KEY_UP:
+                if history and hist_idx > 0:
+                    hist_idx -= 1
+                    input_str = history[hist_idx]
+            elif key == curses.KEY_DOWN:
+                if history and hist_idx < len(history) - 1:
+                    hist_idx += 1
+                    input_str = history[hist_idx]
+                else:
+                    input_str = ""
+                    hist_idx = len(history)
             elif 32 <= key <= 126:
                 input_str += chr(key)
-            # 입력창을 항상 prompt와 함께 다시 그림
-            stdscr.addstr(prompt_y, prompt_x, prompt + input_str + " " * 10)
 
     def run(self):
         curses.wrapper(self._main)
 
     def _main(self, stdscr):
-        curses.curs_set(1)  # 커서 깜빡임 활성화
-        curses.echo()
+        curses.curs_set(1)
+        curses.noecho()
         input_str = ""
         while True:
             stdscr.clear()
             height, width = stdscr.getmaxyx()
 
+            min_width = 60
+            min_height = 20
+            if width < min_width or height < min_height:
+                stdscr.addstr(0, 0, f"터미널 크기를 최소 {min_width}x{min_height} 이상으로 늘려주세요.")
+                stdscr.refresh()
+                stdscr.getch()
+                continue
+
+            usable_height = height - 6  # 입력창 window 높이(3) + 메시지창(1) + 여유(2)
             reg_win_width = max(18, width // 4)
-            reg_win_height = len(self.simulator.registers) + 2
-            reg_win = curses.newwin(reg_win_height, reg_win_width, 0, 0)
+            reg_win_height = min(50 + 3, usable_height)
+            remain_width = width - reg_win_width
+            mem_win_width = max(24, remain_width // 2)
+            cmd_win_width = max(16, remain_width - mem_win_width)
+            mem_win_height = min(len(self.simulator.memory)//8 + 3, usable_height)
+            cmd_win_height = min(len(self.simulator.command_list) + 3, usable_height)
+
+            reg_win_x = 0
+            mem_win_x = reg_win_width
+            cmd_win_x = reg_win_width + mem_win_width
+
+            reg_win = curses.newwin(reg_win_height, reg_win_width, 0, reg_win_x)
             self.draw_registers(reg_win)
-            reg_win.box()
             reg_win.refresh()
 
-            mem_win_width = width // 2 - reg_win_width - 2
-            mem_win_height = min(len(self.simulator.memory)//8 + 3, height - 4)
-            mem_win = curses.newwin(mem_win_height, mem_win_width, 0, reg_win_width + 1)
+            mem_win = curses.newwin(mem_win_height, mem_win_width, 0, mem_win_x)
             self.draw_memory(mem_win)
-            mem_win.box()
             mem_win.refresh()
 
-            # 명령어 리스트 창
-            cmd_win_width = width - (reg_win_width + mem_win_width + 3)
-            cmd_win_height = len(self.command_list) + 2
-            cmd_win = curses.newwin(cmd_win_height, cmd_win_width, 0, reg_win_width + mem_win_width + 2)
+            cmd_win = curses.newwin(cmd_win_height, cmd_win_width, 0, cmd_win_x)
             self.draw_commands(cmd_win)
-            cmd_win.box()
             cmd_win.refresh()
 
-            stdscr.addstr(height-4, 0, "Enter ARMv7 instruction (or 'q' to quit):")
-            stdscr.addstr(height-3, 0, "> " + input_str)
-            stdscr.addstr(height-2, 0, self.last_message[:width-1])
-            stdscr.move(height-3, 2 + len(input_str))
-            stdscr.refresh()
+            # 입력창 window (높이 4, 화면 하단에서 4줄 위)
+            input_win_height = 4
+            input_win = curses.newwin(input_win_height, width, height - input_win_height, 0)
+            input_win.keypad(True)
+            input_win.clear()
+            input_win.box()
+            input_win.addstr(1, 2, "Enter ARMv7 instruction (or 'q' to quit):")
+            input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
+            input_win.refresh()
 
-            # 입력 함수로 분리
-            input_str = self.get_user_input(stdscr, height-3, 0, input_str)
+            # 메시지창 (입력창 바로 위)
+            msg_y = height - input_win_height - 1
+            msg_win = curses.newwin(1, width, msg_y, 0)
+            msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
+            msg_win.refresh()
+
+            # 입력 받기
+            input_str = self.get_user_input(input_win, input_str)
             command = input_str.strip()
             if command.lower() == 'q':
                 break

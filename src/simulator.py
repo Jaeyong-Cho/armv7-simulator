@@ -2,7 +2,17 @@ import re
 
 class ARMv7Simulator:
     def __init__(self):
-        self.registers = {f"R{i}": 0 for i in range(16)}
+        self.registers = {
+            "com": {"r0": 0, "r1": 0, "r2": 0, "r3": 0, "r4": 0, "r5": 0, "r6": 0, "r7": 0,
+                    "r8": 0, "r9": 0, "r10": 0, "r11": 0, "r12": 0, "pc": 0, "cpsr": 0},
+            "usr/sys": {"sp": 0, "lr": 0, "spsr": 0},
+            "svc": {"sp": 0, "lr": 0, "spsr": 0},
+            "abt": {"sp": 0, "lr": 0, "spsr": 0},
+            "und": {"sp": 0, "lr": 0, "spsr": 0},
+            "irq": {"sp": 0, "lr": 0, "spsr": 0},
+            "mon": {"sp": 0, "lr": 0, "spsr": 0},
+            "fiq": {"r8": 0, "r9": 0, "r10": 0, "r11": 0, "r12": 0, "sp": 0, "lr": 0, "spsr": 0}
+        }
         self.memory = [0] * 64  # 64 words (256 bytes)
         self.command_list = [
             "MOV",
@@ -15,39 +25,55 @@ class ARMv7Simulator:
             "NOP",
             "q"
         ]
+        self.history = []  # 명령어 히스토리 추가
 
     def parse_and_execute(self, instruction):
-        tokens = instruction.strip().split()
+        self.history.append(instruction)  # 히스토리 기록
+        tokens = instruction.strip().replace(',', '').split()
         if not tokens:
             return
 
         op = tokens[0].upper()
-        if op == "MOV" or op == "mov":
-            rd, imm = re.findall(r'R\d+', tokens[1])[0], int(tokens[2].replace('#', ''))
-            self.registers[rd] = imm
-        elif op == "ADD" or op == "add":
-            rd, rn, imm = re.findall(r'R\d+', tokens[1] + tokens[2]), int(tokens[3].replace('#', ''))
-            self.registers[rd[0]] = self.registers[rd[1]] + imm
-        elif op == "STR" or op == "str":
-            rd, rn = re.findall(r'R\d+', tokens[1] + tokens[2])
-            imm = int(re.findall(r'#(\d+)', tokens[2])[0])
-            addr = self.registers[rn] + imm
-            if 0 <= addr < len(self.memory):
-                self.memory[addr] = self.registers[rd]
-        elif op == "LDR" or op == "ldr":
-            rd, rn = re.findall(r'R\d+', tokens[1] + tokens[2])
-            imm = int(re.findall(r'#(\d+)', tokens[2])[0])
-            addr = self.registers[rn] + imm
-            if 0 <= addr < len(self.memory):
-                self.registers[rd] = self.memory[addr]
+        # MOV rX, #imm
+        if op == "MOV":
+            rd = tokens[1].lower()
+            imm = int(tokens[2].replace('#', ''), 0)
+            # r0~r12, pc, cpsr는 "com"에 저장
+            if rd in self.registers["com"]:
+                self.registers["com"][rd] = imm
+            else:
+                # 예외: fiq의 r8~r12
+                for mode in self.registers:
+                    if rd in self.registers[mode]:
+                        self.registers[mode][rd] = imm
+                        break
+        # ADD rX, rY, #imm
+        elif op == "ADD":
+            rd = tokens[1].lower()
+            rn = tokens[2].lower()
+            imm = int(tokens[3].replace('#', ''), 0)
+            if rd in self.registers["com"] and rn in self.registers["com"]:
+                self.registers["com"][rd] = self.registers["com"][rn] + imm
+            else:
+                for mode in self.registers:
+                    if rd in self.registers[mode] and rn in self.registers[mode]:
+                        self.registers[mode][rd] = self.registers[mode][rn] + imm
+                        break
+        # SUB, LDR, STR 등은 필요에 따라 추가 구현
         else:
             print(f"Unsupported instruction: {instruction}")
 
     def get_registers(self):
         return self.registers
 
+    def get_exception_registers(self):
+        return self.exception_registers
+
     def get_memory(self):
         return self.memory
+
+    def get_history(self):
+        return self.history
 
     def visualize(self):
         return self.get_registers(), self.get_memory()[:16]  # Return first 16 words of memory for visualization
