@@ -162,7 +162,7 @@ class ARMv7Simulator:
                         break
                 if reg_val is not None:
                     sp -= 4
-                    # self.registers[sp_mode]["sp"] = sp
+                    self.registers[sp_mode]["sp"] = sp
                     # self.memory[sp] = reg_val  # 필요시 메모리에도 저장
                     self.stack[sp_mode].append((sp, reg_val))
                 else:
