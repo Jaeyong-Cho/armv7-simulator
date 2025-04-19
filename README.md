@@ -13,17 +13,12 @@ armv7-simulator
 │   └── ldr.py           # (Reserved for LDR instruction logic)
 ├── examples
 │   └── ex01.s           # Example ARMv7 assembly file
-├── requirements.txt     # Lists the project dependencies
 └── README.md            # Documentation for the project
 ```
 
 ## Requirements
 
-To run this project, you need to install the required dependencies. You can do this by running:
-
-```
-pip install -r requirements.txt
-```
+To run this project, you need to install the required dependencies.
 
 > **Note:** The TUI uses the `curses` library, which is included with Python on most Unix-like systems. On Windows, you may need to install `windows-curses`.
 
