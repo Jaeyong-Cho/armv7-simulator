@@ -6,6 +6,34 @@ class TUI:
         self.last_message = ""
         self.exit = False
         self.input_exception_log = ""
+        self.highlight_registers = set()
+        self.highlight_memory = set()
+        self.highlight_stack = set()
+        self.highlight_color_pair = 2  # 항상 초록색 사용
+
+    def set_highlight(self, before, after, kind):
+        changed = set()
+        if kind == "registers":
+            for mode in after:
+                for reg in after[mode]:
+                    if mode not in before or reg not in before[mode] or before[mode][reg] != after[mode][reg]:
+                        changed.add((mode, reg))
+            self.highlight_registers = changed
+        elif kind == "memory":
+            for i, (b, a) in enumerate(zip(before, after)):
+                if b != a:
+                    self.highlight_memory.add(i)
+        elif kind == "stack":
+            for mode in after:
+                if mode not in before or before[mode] != after[mode]:
+                    self.highlight_stack.add(mode)
+        self.highlight_color_pair = 2  # 항상 초록색
+
+    def clear_highlight(self):
+        self.highlight_registers = set()
+        self.highlight_memory = set()
+        self.highlight_stack = set()
+        self.highlight_color_pair = 2
 
     def draw_registers(self, win):
         win.clear()
@@ -21,7 +49,10 @@ class TUI:
             for name, value in self.simulator.registers["com"].items():
                 if row < max_y - 1:
                     line = f"{name:>4}: 0x{value:08X}"
-                    win.addstr(row, 3, line[:max_x-4])
+                    attr = 0
+                    if ("com", name) in self.highlight_registers and curses.has_colors():
+                        attr = curses.color_pair(self.highlight_color_pair) | curses.A_BOLD
+                    win.addstr(row, 3, line[:max_x-4], attr)
                     row += 1
         # 각 모드별 레지스터
         for mode in ["usr/sys", "svc", "mon", "abt", "und", "irq", "fiq"]:
@@ -32,7 +63,10 @@ class TUI:
                 for rname, rval in self.simulator.registers[mode].items():
                     if row < max_y - 1:
                         line = f"{rname:>4}: 0x{rval:08X}"
-                        win.addstr(row, 3, line[:max_x-4])
+                        attr = 0
+                        if (mode, rname) in self.highlight_registers and curses.has_colors():
+                            attr = curses.color_pair(self.highlight_color_pair) | curses.A_BOLD
+                        win.addstr(row, 3, line[:max_x-4], attr)
                         row += 1
 
     def draw_memory(self, win):
@@ -41,8 +75,23 @@ class TUI:
         win.addstr(0, 2, "[Memory Map]")
         memory = self.simulator.memory
         for i in range(0, min(len(memory), 128), 8):
-            line = ' '.join(f"{b:02X}" for b in memory[i:i+8])
-            win.addstr(1 + i // 8, 1, f"{i*4:04X}: {line}")
+            line = ""
+            for j, b in enumerate(memory[i:i+8]):
+                idx = i + j
+                attr = 0
+                if idx in self.highlight_memory and curses.has_colors():
+                    attr = curses.color_pair(self.highlight_color_pair) | curses.A_BOLD
+                line += f"{b:02X} " if attr == 0 else f"{curses.A_BOLD}{b:02X}{curses.A_NORMAL} "
+            # 하이라이트는 addstr에서 처리
+            win.addstr(1 + i // 8, 1, f"{i*4:04X}: ")
+            col = 8
+            for j, b in enumerate(memory[i:i+8]):
+                idx = i + j
+                attr = 0
+                if idx in self.highlight_memory and curses.has_colors():
+                    attr = curses.color_pair(self.highlight_color_pair) | curses.A_BOLD
+                win.addstr(1 + i // 8, col, f"{b:02X}", attr)
+                col += 3
 
     def draw_commands(self, win):
         win.clear()
@@ -72,8 +121,11 @@ class TUI:
                     line = f"{idx:02d}: [0x{addr:02X}] 0x{val:08X}"
                 else:
                     line = f"{idx:02d}: 0x{entry:08X}"
+                attr = 0
+                if mode in self.highlight_stack and curses.has_colors():
+                    attr = curses.color_pair(self.highlight_color_pair) | curses.A_BOLD
                 if row < max_y - 1:
-                    win.addstr(row, 3, line[:max_x-4])
+                    win.addstr(row, 3, line[:max_x-4], attr)
                     row += 1
 
     def draw_reserved(self, win, scroll_offset=0):
@@ -82,7 +134,6 @@ class TUI:
         win.addstr(0, 2, "[Reserved Commands]")
         reserved = self.simulator.get_reserved() if hasattr(self.simulator, "get_reserved") else []
         max_y, max_x = win.getmaxyx()
-        # 스크롤 없이 처음부터 보이도록
         for idx, cmd in enumerate(reserved[:max_y-2], start=1):
             if idx < max_y - 1:
                 win.addstr(idx, 1, cmd[:max_x-3])
@@ -97,22 +148,35 @@ class TUI:
         max_x = input_win.getmaxyx()[1]
         command_list = self.simulator.command_list
 
-        # 레지스터 이름 목록 생성
         reg_names = []
         for mode in self.simulator.registers:
             reg_names.extend(self.simulator.registers[mode].keys())
-        reg_names = list(set(reg_names))  # 중복 제거
+        reg_names = list(set(reg_names))
 
-        cursor_pos = len(input_str)  # 커서 위치 변수
+        cursor_pos = len(input_str)
+        prev_input_str = input_str
 
         while True:
             input_win.move(2, 2)
             input_win.clrtoeol()
-            # 입력창에 현재 커서 위치 반영
-            input_win.addstr(2, 2, prompt + input_str + " " * (max_x - len(prompt) - len(input_str) - 4))
+            if curses.has_colors():
+                common_prefix_len = 0
+                for a, b in zip(prev_input_str, input_str):
+                    if a == b:
+                        common_prefix_len += 1
+                    else:
+                        break
+                input_win.addstr(2, 2, prompt)
+                input_win.addstr(2, 2 + len(prompt), input_str[:common_prefix_len])
+                if common_prefix_len < len(input_str):
+                    input_win.addstr(2, 2 + len(prompt) + common_prefix_len, input_str[common_prefix_len:], curses.color_pair(2) | curses.A_BOLD)
+                input_win.addstr(2, 2 + len(prompt) + len(input_str), " " * (max_x - len(prompt) - len(input_str) - 4))
+            else:
+                input_win.addstr(2, 2, prompt + input_str + " " * (max_x - len(prompt) - len(input_str) - 4))
             input_win.move(2, 2 + len(prompt) + cursor_pos)
             input_win.refresh()
             key = input_win.getch()
+            prev_input_str = input_str
             if key in (curses.KEY_ENTER, 10, 13):
                 return input_str
             elif key in (curses.KEY_BACKSPACE, 127, 8):
@@ -139,7 +203,7 @@ class TUI:
                     input_str = ""
                     hist_idx = len(history)
                     cursor_pos = 0
-            elif key == 9:  # Tab key for auto-completion
+            elif key == 9:
                 parts = input_str.strip().split()
                 if parts:
                     if len(parts) == 1:
@@ -149,7 +213,7 @@ class TUI:
                             parts[0] = matches[0]
                             input_str = " ".join(parts)
                             cursor_pos = len(input_str)
-            elif key == 3:  # Ctrl+C
+            elif key == 3:
                 input_str = ""
                 cursor_pos = 0
             elif 32 <= key <= 126:
@@ -161,12 +225,15 @@ class TUI:
             try:
                 curses.wrapper(self._main)
             except KeyboardInterrupt:
-                pass  # Ctrl+C 무시
+                pass
 
     def _main(self, stdscr):
         curses.curs_set(1)
         curses.noecho()
         input_str = ""
+        if curses.has_colors():
+            curses.start_color()
+            curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)  # 초록색
         while True:
             stdscr.clear()
             height, width = stdscr.getmaxyx()
@@ -179,19 +246,17 @@ class TUI:
                 stdscr.getch()
                 continue
 
-            usable_height = height - 6  # 입력창 window 높이(3) + 메시지창(1) + 여유(2)
+            usable_height = height - 6
             reg_win_width = max(18, width // 4)
             stack_win_width = max(18, width // 4)
             mem_win_width = max(24, width // 4)
             cmd_win_width = max(16, width // 4)
             reserved_win_width = max(18, width // 4)
-            # 나머지 공간은 입력창/메시지창
 
             reg_win_height = min(50 + 3, usable_height)
             stack_win_height = usable_height
             mem_win_height = min(len(self.simulator.memory)//8 + 3, usable_height)
             cmd_win_height = min(len(self.simulator.command_list) + 3, usable_height)
-            # reserved window는 command list window 아래에 배치
             reserved_win_height = usable_height - cmd_win_height
             reserved_win_y = cmd_win_height
             reserved_win_x = reg_win_width + stack_win_width + mem_win_width
@@ -202,47 +267,58 @@ class TUI:
             cmd_win_x = mem_win_x + mem_win_width
 
             reg_win = curses.newwin(reg_win_height, reg_win_width, 0, reg_win_x)
+            stack_win = curses.newwin(stack_win_height, stack_win_width, 0, stack_win_x)
+            mem_win = curses.newwin(mem_win_height, mem_win_width, 0, mem_win_x)
+            cmd_win = curses.newwin(cmd_win_height, cmd_win_width, 0, cmd_win_x)
+            reserved_win = curses.newwin(reserved_win_height, reserved_win_width, reserved_win_y, cmd_win_x)
+
+            # --- 추가: 항상 화면을 그려줌 ---
             self.draw_registers(reg_win)
             reg_win.refresh()
-
-            stack_win = curses.newwin(stack_win_height, stack_win_width, 0, stack_win_x)
             self.draw_stack(stack_win)
             stack_win.refresh()
-
-            mem_win = curses.newwin(mem_win_height, mem_win_width, 0, mem_win_x)
             self.draw_memory(mem_win)
             mem_win.refresh()
-
-            cmd_win = curses.newwin(cmd_win_height, cmd_win_width, 0, cmd_win_x)
             self.draw_commands(cmd_win)
             cmd_win.refresh()
-
-            reserved_win = curses.newwin(reserved_win_height, reserved_win_width, reserved_win_y, cmd_win_x)
             self.draw_reserved(reserved_win)
             reserved_win.refresh()
+            # --- 여기까지 ---
 
-            # 입력창 window (높이 5, 화면 하단에서 5줄 위)
-            input_win_height = 5  # 기존 4에서 5로 증가
+            input_win_height = 5
             input_win = curses.newwin(input_win_height, width, height - input_win_height, 0)
             input_win.keypad(True)
             input_win.clear()
             input_win.box()
             input_win.addstr(1, 2, "Enter ARMv7 instruction (or 'q' to quit):")
-            input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
-            # 예외 메시지 표시 라인(맨 아래)
+            # --- 다음 reserved 명령어를 입력창에 미리 보여줌 ---
+            next_reserved = ""
+            reserved_list = self.simulator.get_reserved() if hasattr(self.simulator, "get_reserved") else []
+            if reserved_list:
+                next_reserved = reserved_list[0]
+            input_prompt_str = input_str
+            # 하이라이트: 입력이 없고 reserved 명령어가 있으면 초록색 bold로 표시
+            if not input_str and next_reserved:
+                if curses.has_colors():
+                    input_win.addstr(2, 2, "> ")
+                    input_win.addstr(2, 4, next_reserved, curses.color_pair(2) | curses.A_BOLD)
+                    input_win.addstr(2, 4 + len(next_reserved), " " * (width - len(next_reserved) - 4))
+                else:
+                    input_win.addstr(2, 2, "> " + next_reserved + " " * (width - len(next_reserved) - 4))
+            else:
+                input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
+            # -------------------------------------------------
             if hasattr(self, "input_exception_log") and self.input_exception_log:
                 input_win.addstr(3, 2, f"Error: {self.input_exception_log}"[:width-4], curses.color_pair(1) if curses.has_colors() else 0)
             else:
                 input_win.addstr(3, 2, " " * (width-4))
             input_win.refresh()
 
-            # 메시지창 (입력창 바로 위)
             msg_y = height - input_win_height - 1
             msg_win = curses.newwin(1, width, msg_y, 0)
             msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
             msg_win.refresh()
 
-            # reserved 명령어가 있으면 엔터로 한 줄씩 실행
             if self.simulator.get_reserved():
                 self.input_exception_log = ""
                 msg_win.clear()
@@ -250,6 +326,9 @@ class TUI:
                 msg_win.refresh()
                 key = input_win.getch()
                 if key in (curses.KEY_ENTER, 10, 13):
+                    before_regs = {k: v.copy() for k, v in self.simulator.registers.items()}
+                    before_mem = self.simulator.memory[:]
+                    before_stack = {k: v[:] for k, v in self.simulator.stack.items()}
                     next_cmd = self.simulator.pop_reserved()
                     if next_cmd:
                         try:
@@ -262,21 +341,32 @@ class TUI:
                             msg_win.clear()
                             msg_win.addstr(0, 0, self.last_message[:width-1] + " " * (width - len(self.last_message) - 1))
                             msg_win.refresh()
-                            curses.napms(1200)
+                    self.clear_highlight()
+                    self.set_highlight(before_regs, self.simulator.registers, "registers")
+                    self.set_highlight(before_mem, self.simulator.memory, "memory")
+                    self.set_highlight(before_stack, self.simulator.stack, "stack")
                     input_str = ""
+                    self.draw_registers(reg_win)
+                    reg_win.refresh()
+                    self.draw_stack(stack_win)
+                    stack_win.refresh()
+                    self.draw_memory(mem_win)
+                    mem_win.refresh()
                     continue
                 elif key in (ord('q'), ord('Q')):
                     self.exit = True
                     break
                 else:
-                    continue  # 다른 키는 무시하고 다시 루프
-            # reserved 명령어가 없으면 일반 입력
+                    continue
             input_str = self.get_user_input(input_win, input_str)
             command = input_str.strip()
             if command.lower() == 'q':
                 self.exit = True
                 break
             elif command:
+                before_regs = {k: v.copy() for k, v in self.simulator.registers.items()}
+                before_mem = self.simulator.memory[:]
+                before_stack = {k: v[:] for k, v in self.simulator.stack.items()}
                 try:
                     self.simulator.parse_and_execute(command)
                     self.last_message = f"Executed: {command}"
@@ -293,7 +383,17 @@ class TUI:
                     input_win.addstr(2, 2, "> " + input_str + " " * (width - len(input_str) - 4))
                     input_win.addstr(3, 2, f"Error: {self.input_exception_log}"[:width-4], curses.color_pair(1) if curses.has_colors() else 0)
                     input_win.refresh()
-                    curses.napms(1200)
+
+                self.clear_highlight()
+                self.set_highlight(before_regs, self.simulator.registers, "registers")
+                self.set_highlight(before_mem, self.simulator.memory, "memory")
+                self.set_highlight(before_stack, self.simulator.stack, "stack")
+                self.draw_registers(reg_win)
+                reg_win.refresh()
+                self.draw_stack(stack_win)
+                stack_win.refresh()
+                self.draw_memory(mem_win)
+                mem_win.refresh()
             input_str = ""
 
 # 사용 예시:
