@@ -71,12 +71,14 @@ class ARMv7Simulator:
 
         # extern 라벨 선언 처리 (.extern label @@ 0xADDR)
         if tokens[0].lower() == ".extern":
-            # 예: .extern curr_pcb @0x1000
+            # 예: .extern curr_pcb @@ 0x1000
             name = tokens[1]
             addr = 0
-            for t in tokens:
-                if t.startswith("@@ 0x"):
-                    addr = int(t[1:], 16)
+            for i, t in enumerate(tokens):
+                if t == "@@":
+                    # 다음 토큰이 주소임
+                    if i + 1 < len(tokens) and tokens[i + 1].startswith("0x"):
+                        addr = int(tokens[i + 1], 16)
             self.add_label(name, addr)
             return
 
