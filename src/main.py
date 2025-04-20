@@ -4,8 +4,6 @@ import sys
 
 def main():
     simulator = ARMv7Simulator()
-    break_mode = False
-    break_encountered = False
     commands = []
     reserved_commands = []
 
