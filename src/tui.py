@@ -13,7 +13,6 @@ class TUI:
         self.highlight_color_pair = 2  # 항상 초록색 사용
         self.mem_scroll = 0  # 메모리 스크롤 오프셋(라인 단위)
         # --- 디버깅 로그 파일 열기 ---
-        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         self.debug_log = open(f"debug_log_{now}.txt", "w", encoding="utf-8")
 
     def log_debug_info(self, command, before_regs, after_regs, before_mem, after_mem, before_stack, after_stack):
