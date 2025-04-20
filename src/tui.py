@@ -11,6 +11,7 @@ class TUI:
         self.highlight_memory = set()
         self.highlight_stack = set()
         self.highlight_color_pair = 2  # 항상 초록색 사용
+        self.mem_scroll = 0  # 메모리 스크롤 오프셋(라인 단위)
         # --- 디버깅 로그 파일 열기 ---
         now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         self.debug_log = open(f"debug_log_{now}.txt", "w", encoding="utf-8")
@@ -105,10 +106,19 @@ class TUI:
         win.addstr(0, 2, f"[Memory Map]  Used: {used_bytes} bytes")
         addresses = sorted(memory.keys())
         max_y, max_x = win.getmaxyx()
-        # max_lines 제한 없이 실제 저장된 모든 주소 출력
-        for line_idx, addr in enumerate(addresses):
-            if line_idx >= max_y - 2:
+        visible_lines = max_y - 2
+        total_lines = len(addresses)
+        # 스크롤 오프셋 보정
+        if self.mem_scroll > total_lines - visible_lines:
+            self.mem_scroll = max(0, total_lines - visible_lines)
+        if self.mem_scroll < 0:
+            self.mem_scroll = 0
+        # 스크롤된 위치부터 출력
+        for line_idx in range(visible_lines):
+            addr_idx = self.mem_scroll + line_idx
+            if addr_idx >= total_lines:
                 break
+            addr = addresses[addr_idx]
             val = memory.get(addr, 0)
             out_str = f"{addr:08X}: {val:08X}"
             win.addstr(1 + line_idx, 1, out_str[:max_x])
@@ -254,6 +264,8 @@ class TUI:
         if curses.has_colors():
             curses.start_color()
             curses.init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)  # 초록색
+        stdscr.keypad(True)
+        curses.mousemask(curses.ALL_MOUSE_EVENTS)
         while True:
             stdscr.clear()
             height, width = stdscr.getmaxyx()
@@ -275,7 +287,7 @@ class TUI:
 
             reg_win_height = min(50 + 3, usable_height)
             stack_win_height = usable_height
-            mem_win_height = min(len(self.simulator.memory)//8 + 3, usable_height)
+            mem_win_height = usable_height
             cmd_win_height = min(len(self.simulator.command_list) + 3, usable_height)
             reserved_win_height = usable_height - cmd_win_height
             reserved_win_y = cmd_win_height
@@ -384,6 +396,15 @@ class TUI:
                     break
                 else:
                     continue
+            key = stdscr.getch()
+            if key == curses.KEY_MOUSE:
+                _, mx, my, _, mouse_state = curses.getmouse()
+                # 메모리 윈도우 영역에서만 스크롤 처리
+                if (mem_win_y := 0) <= my < (mem_win_y + mem_win_height) and (mem_win_x <= mx < mem_win_x + mem_win_width):
+                    if mouse_state & curses.BUTTON4_PRESSED:  # wheel up
+                        self.mem_scroll = max(0, self.mem_scroll - 1)
+                    elif mouse_state & curses.BUTTON5_PRESSED:  # wheel down
+                        self.mem_scroll += 1
             input_str = self.get_user_input(input_win, input_str)
             command = input_str.strip()
             if command.lower() == 'q':

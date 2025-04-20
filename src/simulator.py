@@ -110,8 +110,7 @@ class ARMv7Simulator:
         return self.history
 
     def visualize(self):
-        # 메모리의 첫 16개 주소만 정렬해서 반환
+        # 메모리의 전체 주소를 정렬해서 반환
         mem_keys = sorted(self.memory.keys())
-        first_keys = mem_keys[:16]
-        mem_view = [self.memory.get(addr, 0) for addr in first_keys]
+        mem_view = [self.memory.get(addr, 0) for addr in mem_keys]
         return self.get_registers(), mem_view
