@@ -1,4 +1,5 @@
 import curses
+import datetime
 
 class TUI:
     def __init__(self, simulator):
@@ -10,6 +11,32 @@ class TUI:
         self.highlight_memory = set()
         self.highlight_stack = set()
         self.highlight_color_pair = 2  # 항상 초록색 사용
+        # --- 디버깅 로그 파일 열기 ---
+        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.debug_log = open(f"debug_log_{now}.txt", "w", encoding="utf-8")
+
+    def log_debug_info(self, command, before_regs, after_regs, before_mem, after_mem, before_stack, after_stack):
+        self.debug_log.write(f"\n=== Command: {command} ===\n")
+        self.debug_log.write("Registers (before):\n")
+        for mode, regs in before_regs.items():
+            self.debug_log.write(f"  <{mode}> {regs}\n")
+        self.debug_log.write("Registers (after):\n")
+        for mode, regs in after_regs.items():
+            self.debug_log.write(f"  <{mode}> {regs}\n")
+        self.debug_log.write("Memory (before):\n")
+        for addr in sorted(before_mem.keys()):
+            self.debug_log.write(f"  {addr:08X}: {before_mem[addr]:08X}\n")
+        self.debug_log.write("Memory (after):\n")
+        for addr in sorted(after_mem.keys()):
+            self.debug_log.write(f"  {addr:08X}: {after_mem[addr]:08X}\n")
+        self.debug_log.write("Stack (before):\n")
+        for mode, stack in before_stack.items():
+            self.debug_log.write(f"  <{mode}> {stack}\n")
+        self.debug_log.write("Stack (after):\n")
+        for mode, stack in after_stack.items():
+            self.debug_log.write(f"  <{mode}> {stack}\n")
+        self.debug_log.write("="*40 + "\n")
+        self.debug_log.flush()
 
     def set_highlight(self, before, after, kind):
         changed = set()
@@ -72,15 +99,16 @@ class TUI:
     def draw_memory(self, win):
         win.clear()
         win.box()
-        win.addstr(0, 2, "[Memory Map]")
+        # 총 메모리 사용량 계산 (4바이트 단위)
         memory = self.simulator.memory
+        used_bytes = len(memory) * 4
+        win.addstr(0, 2, f"[Memory Map]  Used: {used_bytes} bytes")
         addresses = sorted(memory.keys())
-        max_lines = min(32, win.getmaxyx()[0] - 2)  # 윈도우 높이 고려
-        max_x = win.getmaxyx()[1] - 2               # 윈도우 폭 고려
-        for line_idx in range(max_lines):
-            if line_idx >= len(addresses):
+        max_y, max_x = win.getmaxyx()
+        # max_lines 제한 없이 실제 저장된 모든 주소 출력
+        for line_idx, addr in enumerate(addresses):
+            if line_idx >= max_y - 2:
                 break
-            addr = addresses[line_idx]
             val = memory.get(addr, 0)
             out_str = f"{addr:08X}: {val:08X}"
             win.addstr(1 + line_idx, 1, out_str[:max_x])
@@ -337,6 +365,12 @@ class TUI:
                     self.set_highlight(before_regs, self.simulator.registers, "registers")
                     self.set_highlight(before_mem, self.simulator.memory, "memory")
                     self.set_highlight(before_stack, self.simulator.stack, "stack")
+                    # --- 디버깅 정보 기록 ---
+                    after_regs = {k: v.copy() for k, v in self.simulator.registers.items()}
+                    after_mem = self.simulator.memory.copy()
+                    after_stack = {k: v[:] for k, v in self.simulator.stack.items()}
+                    self.log_debug_info(next_cmd, before_regs, after_regs, before_mem, after_mem, before_stack, after_stack)
+                    # ---------------------
                     input_str = ""
                     self.draw_registers(reg_win)
                     reg_win.refresh()
@@ -380,6 +414,12 @@ class TUI:
                 self.set_highlight(before_regs, self.simulator.registers, "registers")
                 self.set_highlight(before_mem, self.simulator.memory, "memory")
                 self.set_highlight(before_stack, self.simulator.stack, "stack")
+                # --- 디버깅 정보 기록 ---
+                after_regs = {k: v.copy() for k, v in self.simulator.registers.items()}
+                after_mem = self.simulator.memory.copy()
+                after_stack = {k: v[:] for k, v in self.simulator.stack.items()}
+                self.log_debug_info(command, before_regs, after_regs, before_mem, after_mem, before_stack, after_stack)
+                # ---------------------
                 self.draw_registers(reg_win)
                 reg_win.refresh()
                 self.draw_stack(stack_win)
@@ -387,6 +427,11 @@ class TUI:
                 self.draw_memory(mem_win)
                 mem_win.refresh()
             input_str = ""
+
+    def __del__(self):
+        # 프로그램 종료 시 파일 닫기
+        if hasattr(self, "debug_log") and self.debug_log:
+            self.debug_log.close()
 
 # 사용 예시:
 # from simulator import ARMv7Simulator
