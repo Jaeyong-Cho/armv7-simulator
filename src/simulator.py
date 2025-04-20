@@ -27,7 +27,7 @@ class ARMv7Simulator:
             "mon": [],
             "fiq": []
         }
-        self.memory = [0] * 64  # 64 words (256 bytes)
+        self.memory = {}  # 리스트에서 dict로 변경
         self.command_list = [
             "ADD",
             "B",
@@ -110,4 +110,8 @@ class ARMv7Simulator:
         return self.history
 
     def visualize(self):
-        return self.get_registers(), self.get_memory()[:16]  # Return first 16 words of memory for visualization
+        # 메모리의 첫 16개 주소만 정렬해서 반환
+        mem_keys = sorted(self.memory.keys())
+        first_keys = mem_keys[:16]
+        mem_view = [self.memory.get(addr, 0) for addr in first_keys]
+        return self.get_registers(), mem_view

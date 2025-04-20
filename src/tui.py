@@ -74,24 +74,16 @@ class TUI:
         win.box()
         win.addstr(0, 2, "[Memory Map]")
         memory = self.simulator.memory
-        for i in range(0, min(len(memory), 128), 8):
-            line = ""
-            for j, b in enumerate(memory[i:i+8]):
-                idx = i + j
-                attr = 0
-                if idx in self.highlight_memory and curses.has_colors():
-                    attr = curses.color_pair(self.highlight_color_pair) | curses.A_BOLD
-                line += f"{b:02X} " if attr == 0 else f"{curses.A_BOLD}{b:02X}{curses.A_NORMAL} "
-            # 하이라이트는 addstr에서 처리
-            win.addstr(1 + i // 8, 1, f"{i*4:04X}: ")
-            col = 8
-            for j, b in enumerate(memory[i:i+8]):
-                idx = i + j
-                attr = 0
-                if idx in self.highlight_memory and curses.has_colors():
-                    attr = curses.color_pair(self.highlight_color_pair) | curses.A_BOLD
-                win.addstr(1 + i // 8, col, f"{b:02X}", attr)
-                col += 3
+        addresses = sorted(memory.keys())
+        max_lines = min(32, win.getmaxyx()[0] - 2)  # 윈도우 높이 고려
+        max_x = win.getmaxyx()[1] - 2               # 윈도우 폭 고려
+        for line_idx in range(max_lines):
+            if line_idx >= len(addresses):
+                break
+            addr = addresses[line_idx]
+            val = memory.get(addr, 0)
+            out_str = f"{addr:08X}: {val:08X}"
+            win.addstr(1 + line_idx, 1, out_str[:max_x])
 
     def draw_commands(self, win):
         win.clear()
@@ -327,7 +319,7 @@ class TUI:
                 key = input_win.getch()
                 if key in (curses.KEY_ENTER, 10, 13):
                     before_regs = {k: v.copy() for k, v in self.simulator.registers.items()}
-                    before_mem = self.simulator.memory[:]
+                    before_mem = self.simulator.memory.copy()  # <-- 여기!
                     before_stack = {k: v[:] for k, v in self.simulator.stack.items()}
                     next_cmd = self.simulator.pop_reserved()
                     if next_cmd:
@@ -365,7 +357,7 @@ class TUI:
                 break
             elif command:
                 before_regs = {k: v.copy() for k, v in self.simulator.registers.items()}
-                before_mem = self.simulator.memory[:]
+                before_mem = self.simulator.memory.copy()  # <-- 여기!
                 before_stack = {k: v[:] for k, v in self.simulator.stack.items()}
                 try:
                     self.simulator.parse_and_execute(command)

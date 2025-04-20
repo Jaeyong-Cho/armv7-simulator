@@ -26,5 +26,7 @@ def handle_push(sim, tokens):
             sp -= 4
             sim.registers[sp_mode]["sp"] = sp
             sim.stack[sp_mode].append((sp, reg_val))
+            # 메모리에도 반영 (sp 주소에 reg_val 저장)
+            sim.memory[sp] = reg_val
         else:
             raise Exception(f"Register {reg} not found")
